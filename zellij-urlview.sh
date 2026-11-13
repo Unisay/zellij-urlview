@@ -77,20 +77,41 @@ fi
 #  - dedupe while preserving order, then reverse so the most recently printed
 #    URLs (bottom of the screen) appear first in urlview.
 mapfile -t urls < <(
-    # Determine terminal width as the longest line in the dump.  Lines that
-    # fill this width were wrapped by the terminal and must be joined with the
-    # next line so a URL that crosses a wrap boundary is reconstructed whole.
-    # Shorter lines ended naturally and keep their newline as a separator.
+    # zellij's DumpScreen already joins lines the *terminal* wrapped (it only
+    # emits a newline before "canonical" rows).  What it cannot undo is a split
+    # made by the program itself: full-screen apps such as nvim draw every row
+    # explicitly and wrap their own messages a column or two short of the pane
+    # width (e.g. `:!git push` output).  Reconstruct those by joining a line
+    # with the next one when all of the following hold:
+    #   - the line ends in the middle of a URL (URL chars run to end of line)
+    #   - the line is nearly as wide as the widest line on screen (>= 90%;
+    #     the app wraps a column or two short, and a statusline is wider still)
+    #   - the next line starts with URL chars and is not a "word: " label
+    #     (git hooks print "remote: ..." right after a URL line)
+    # This is a heuristic, and author-wrapped prose can fool it ("...see
+    # https://x.y/a" + "and then..."), so the unjoined line is kept as a
+    # candidate too: the joined URL is listed first, the short one after it.
     width=$(awk '{ gsub(/\r/,""); if (length > max) max = length } END { print max+0 }' "$dump")
     awk -v w="$width" '
+        BEGIN { url_chars = "[A-Za-z0-9._~:/?#@!$&\047()*+,;=%-]" }
         { gsub(/\r/, "") }
         NR > 1 {
-            # Join if prev filled the width, but not when the next line starts
-            # with "word: " or "word:\n" — that is a label, not a URL continuation.
-            join = (length(prev) == w && w > 0 && $0 !~ /^[A-Za-z]+:([ \t]|$)/)
-            printf "%s%s", prev, (join ? "" : "\n")
+            # row_len is the last physical row, not the accumulated line
+            join = (w > 0 && row_len >= w * 0.9 \
+                    && prev ~ ("((https?|ftp|file)://|www\\.)" url_chars "*$") \
+                    && $0 ~ ("^" url_chars) \
+                    && $0 !~ /^[A-Za-z]+:([ \t]|$)/)
+            if (join) {
+                if (!carried) printf "%s\n", prev   # keep the short form once
+                prev = prev $0
+                row_len = length($0)
+                carried = 1
+                next
+            }
+            printf "%s\n", prev
+            carried = 0
         }
-        { prev = $0 }
+        { prev = $0; row_len = length($0) }
         END { if (NR > 0) printf "%s\n", prev }
     ' "$dump" \
         | grep -aoE '((https?|ftp|file)://|www\.)[A-Za-z0-9._~:/?#@!$&'"'"'()*+,;=%-]+' \
