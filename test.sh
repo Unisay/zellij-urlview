@@ -29,6 +29,7 @@ Another link: www.example.org
 file:///x
 ftp://example.net
 A literal escape: https://example.org/%60
+independent-row
 DATA
 export FZF_DEFAULT_OPTS=ignored FZF_DEFAULT_OPTS_FILE=ignored
 bash "$picker"

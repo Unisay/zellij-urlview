@@ -110,6 +110,8 @@ export URLVIEW_OPENER=firefox
 - `DumpScreen` captures the **visible viewport**, not the full scrollback —
   same as a default `tmux capture-pane`. Scroll up before opening urlview to
   reach older links.
+- Zellij soft wraps are handled by its screen dump. Application-drawn line
+  breaks terminate a URL, so adjacent screen text stays separate.
 - URL detection is regex-based and pragmatic; it favours the common cases
   (http/https and `www.` hosts) over RFC-perfect completeness.
 
