@@ -36,9 +36,7 @@ Its workflow is exactly the one this project recreates for zellij:
 - You pick one, and it opens.
 
 That tiny "capture → extract → pick → open" pipeline became muscle memory for a
-lot of terminal users. zellij plugins can't read another pane's scrollback, so
-`Zellij-urlview` rebuilds the same idea using zellij's native `DumpScreen`
-and `Run` actions (see [How it works](#how-it-works)).
+lot of terminal users. This fork reads the originating pane with the Zellij CLI.
 
 ### References & see also
 
@@ -52,55 +50,25 @@ and `Run` actions (see [How it works](#how-it-works)).
 
 ## How it works
 
-zellij plugins are sandboxed WebAssembly modules, and the plugin API
-deliberately **cannot read another pane's scrollback**. So instead of fighting
-that, `Zellij-urlview` uses the same idea `tmux-urlview` always did —
-capture, then pipe — wired through two native zellij primitives:
+On Zellij 0.46 or newer, the floating picker receives the originating pane ID.
+It reads that pane’s visible text with `zellij action dump-screen`, extracts web
+links, and passes each selection to the opener as a single argument. The default
+binding needs no shared dump file. Only the selected links go to the opener.
 
-1. A keybind runs **`DumpScreen`** while your pane is still focused, writing its
-   contents to a temp file.
-2. The same keybind then **`Run`s a floating pane** that executes
-   `zellij-urlview.sh`, which extracts the URLs, shows them in `fzf`, and opens your
-   pick.
+## Installation with Nix
 
-Capturing *before* the floating pane opens is the trick that avoids urlview
-dumping itself instead of your work.
+Install the package with `nix profile add github:Unisay/zellij-urlview`, or add
+the flake as an input and include `inputs.zellij-urlview.packages.${pkgs.stdenv.hostPlatform.system}.default`
+in your packages. The package supplies Bash, fzf and the text utilities. The
+Zellij CLI and a browser opener must be available at runtime.
 
----
-
-## Requirements
-
-| Tool        | Why                                          | Required           |
-| ----------- | -------------------------------------------- | ------------------ |
-| `zellij`    | ≥ 0.40 (uses `DumpScreen` + `Run` keybinds)  | yes                |
-| `bash`      | the script is bash (`mapfile`, arrays)       | yes                |
-| `fzf`       | the interactive UI                           | yes (or `urlview`) |
-| `urlview`   | fallback if `fzf` is missing                 | optional           |
-| `xdg-open`  | opens the chosen URL (Linux)                 | one opener needed  |
-| `open`      | opens the chosen URL (macOS)                 | one opener needed  |
-| `setsid`    | detaches the browser cleanly (util-linux)    | optional           |
-
-On most Linux desktops `bash`, `xdg-open`, and `setsid` are already present;
-you usually only need to install `fzf`.
-
----
-
-## Installation
-
-```sh
-git clone https://github.com/VV0JC13CH/zellij-urlview.git ~/.config/zellij/zellij-urlview
-chmod +x ~/.config/zellij/zellij-urlview/zellij-urlview.sh
-```
-
-Then add a keybind to your `~/.config/zellij/config.kdl`. The binding has two
-parts — dump the screen, then open urlview in a floating pane:
+Add this to your Zellij configuration:
 
 ```kdl
 keybinds {
     shared_except "locked" {
         bind "Alt u" {
-            DumpScreen "/tmp/zellij-urlview.dump";
-            Run "bash" "-c" "exec \"$HOME/.config/zellij/zellij-urlview/zellij-urlview.sh\" /tmp/zellij-urlview.dump" {
+            Run "zellij-urlview" {
                 floating true
                 close_on_exit true
                 name "zellij-urlview"
@@ -110,17 +78,10 @@ keybinds {
 }
 ```
 
-> **Note:** zellij's `Run` passes its arguments verbatim — no shell — so `~` and
-> `$HOME` are not expanded. Running through `bash -c` lets bash do the expansion,
-> so the binding above works as-is for any user as long as you cloned the repo to
-> `~/.config/zellij/zellij-urlview` (adjust that path inside the string otherwise).
-
-A copy of this snippet lives in [`examples/config.kdl`](examples/config.kdl).
-
-Reload your config (in zellij: enter session mode and reload, or restart) and
-press your keybind. A floating menu of every URL on screen appears.
-
----
+For installation without Nix, put `zellij-urlview.sh` on PATH as
+`zellij-urlview`. Use Bash 4+, fzf and GNU coreutils (including `tac`).
+The optional legacy argument is a dump file that the picker deletes on exit.
+Supply only a private file created for this invocation.
 
 ## Usage
 
@@ -139,7 +100,7 @@ Set `URLVIEW_OPENER` if you want a specific opener instead of the
 auto-detected one (`xdg-open` → `open` → `$BROWSER`):
 
 ```sh
-URLVIEW_OPENER=firefox
+export URLVIEW_OPENER=firefox
 ```
 
 ---
@@ -150,7 +111,7 @@ URLVIEW_OPENER=firefox
   same as a default `tmux capture-pane`. Scroll up before opening urlview to
   reach older links.
 - URL detection is regex-based and pragmatic; it favours the common cases
-  (http/https/ftp/file and `www.` hosts) over RFC-perfect completeness.
+  (http/https and `www.` hosts) over RFC-perfect completeness.
 
 ---
 
