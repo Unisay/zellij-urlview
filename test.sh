@@ -41,3 +41,14 @@ DATA
 diff -u expected opened
 CANCEL=yes bash "$picker"
 diff -u expected opened
+
+cat > read-url <<'SH'
+#!/usr/bin/env bash
+[[ $# == 0 ]] || exit 1
+IFS= read -r url || exit 1
+printf '%s\n' "$url" >> from-stdin
+SH
+sed -i "1c#!$(command -v bash)" read-url
+chmod +x read-url
+URLVIEW_OPENER=false bash "$picker" --stdin-opener "$tmp/read-url"
+diff -u expected from-stdin

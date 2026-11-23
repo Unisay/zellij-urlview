@@ -14,6 +14,11 @@
 
 set -u
 
+stdin_opener=''
+if [[ ${1:-} == --stdin-opener ]]; then
+    stdin_opener=${2:?expected an opener executable}
+    shift 2
+fi
 dump="${1:-}"
 
 cleanup() {
@@ -62,10 +67,9 @@ fi
 mapfile -t urls < <(
     # Zellij joins terminal soft wraps. Joining independent application rows
     # would risk appending unrelated screen text to a selected URL.
-    grep -aoE '(https?://|www\.)[A-Za-z0-9._~:/?#@!$&'"'"'()*+,;=%-]+' <<< "$screen" \
+    printf '%s\n' "$screen" | grep -aoE '(https?://|www\.)[A-Za-z0-9._~:/?#@!$&'"'"'()*+,;=%-]+' \
         | sed -E 's/[].,;:!?")>'"'"']+$//' \
-        | awk '!seen[$0]++' \
-        | tac
+        | awk '!seen[$0]++ { url[++n]=$0 } END { for (i=n; i>0; --i) print url[i] }'
 )
 
 if [[ ${#urls[@]} -eq 0 ]]; then
@@ -83,7 +87,7 @@ mapfile -t chosen < <(printf '%s\n' "${urls[@]}" \
 
 [[ ${#chosen[@]} -eq 0 ]] && exit 0
 
-opener="$(detect_opener)"
+opener=${stdin_opener:-$(detect_opener)}
 if [[ -z "$opener" ]]; then
     echo "zellij-urlview: no URL opener found (set URLVIEW_OPENER)." >&2
     pause
@@ -95,6 +99,15 @@ for url in "${chosen[@]}"; do
     # www.* hosts need a scheme for the opener to route them to the browser.
     [[ "$url" == www.* ]] && url="https://$url"
     case "$url" in
-        http://*|https://*) "$opener" "$url" || { echo "Could not open the selected URL" >&2; pause; exit 1; } ;;
+        http://*|https://*) ;;
+        *) continue ;;
     esac
+    if [[ -n "$stdin_opener" ]]; then
+        printf '%s\n' "$url" | "$opener" && continue
+    elif "$opener" "$url"; then
+        continue
+    fi
+    echo "Could not open the selected URL" >&2
+    pause
+    exit 1
 done

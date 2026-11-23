@@ -103,6 +103,10 @@ auto-detected one (`xdg-open` → `open` → `$BROWSER`):
 export URLVIEW_OPENER=firefox
 ```
 
+For a wrapper that reads one URL line from standard input, launch
+`zellij-urlview --stdin-opener /absolute/path/to/wrapper`. This takes
+precedence over the environment and keeps the URL out of the wrapper's argv.
+
 ---
 
 ## Limitations
